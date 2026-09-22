@@ -1,0 +1,884 @@
+---
+title: "HbA1c y riesgo de diabetes: análisis exploratorio de datos NHANES"
+author: "Camila Reeb, Sofía Silva Carbajales"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Sección 1. Contexto y objetivo del estudio. Datos
+
+Luego de examinar los datasets en los links que fueron provistos como fuentes, decidimos optar por un dataset del sitio web <https://hbiostat.org/data>. El dataset escogido fue "NHANES glycohemoglobin data", que procede del **National Health and Nutrition Examination Survey (NHANES)**, un estudio transversal poblacional que se realiza en Estados Unidos desde los años sesenta y cada dos años, diseñado para evaluar el estado de salud y nutrición de la población mediante entrevistas, exploraciones físicas y análisis de laboratorio. Los datos son públicos, anonimizados y de libre acceso. En este caso, este conjunto de datos contiene información sobre:
+
+-   Características demográficas (edad, sexo, raza/etnia, nivel de ingresos)
+-   Medidas antropométricas (peso, talla, IMC, perímetros corporales, pliegues cutáneos)
+-   Parámetros bioquímicos (hemoglobina glicosilada, albúmina, urea, creatinina)
+-   Diagnóstico y tratamiento de diabetes
+
+La información sobre el diseño del estudio, los protocolos de recogida de datos y la documentación técnica se encuentra disponible en el sitio web oficial del **National Center for Health Statistics (NCHS)**, dentro del programa NHANES (<https://wwwn.cdc.gov/nchs/nhanes/>).
+
+Escogimos este conjunto de datos porque incluye variables de distintos tipos (socioeconómicas, antropométricas y analíticas) que permiten estudiar su relación con la diabetes mellitus, un importante problema de salud pública a nivel mundial debido a su alta prevalencia y a las complicaciones cardiovasculares, renales y metabólicas asociadas.
+
+El objetivo principal de este trabajo es explorar la relación entre la hemoglobina glicosilada (HbA1c), un biomarcador utilizado tanto para evaluar el control glucémico a mediano plazo como para el diagnóstico de diabetes; y variables antropométricas, clínicas y sociodemográficas. Así, se pretende identificar patrones asociados al diagnóstico de diabetes o prediabetes, además de conocer el control glucémico en población general. También se pretende evaluar si determinadas variables antropométricas (como el índice de masa corporal o la circunferencia de cintura) pueden actuar como posibles predictores de diabetes, explorando posibles diferencias en los niveles de HbA1c según el sexo, edad y nivel socioeconómico del participante.
+
+### Sección 2. Prospección y preparación de los datos
+
+#### 2.1 Descripción de los datos
+
+El archivo nhgh.tsv se descargó de la fuente citada arriba y se incluye en la carpeta `data/` de este repositorio. Lo cargamos al entorno de RStudio utilizando el paquete `readr`.
+
+```{r}
+library(readr)
+
+nhgh <- read_tsv("data/nhgh.tsv")
+```
+
+Vamos a explorar el conjunto de datos:
+
+```{r}
+
+head(nhgh)
+```
+
+```{r}
+str(nhgh)
+```
+
+Vemos que tenemos 6795 observaciones de 20 variables. A continuación, describimos las variables:
+
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| Variable | Tipo                               | Significado                                        | Unidad                                                          |
++==========+====================================+====================================================+=================================================================+
+| seqn     | Integer                            | Número de identificación del participante          | ID                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| sex      | Categórica: factor con dos niveles | Sexo                                               | male: masculino                                                 |
+|          |                                    |                                                    |                                                                 |
+|          |                                    |                                                    | female: femenino                                                |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| age      | Numérico                           | Edad en años                                       | Años                                                            |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| re       | Categórica: factor con 5 niveles   | Raza/Etnia                                         | Categorías                                                      |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| income   | Categórica: factor con 14 niveles  | Ingresos familiares                                | Categorías con 14 rangos según miles de dólares estadounidenses |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| tx       | Categórica, expresada como integer | ¿Usa insulina o medicación para la diabetes?       | 0: no                                                           |
+|          |                                    |                                                    |                                                                 |
+|          |                                    |                                                    | 1: si                                                           |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| dx       | Categórica, expresada como integer | ¿Ha sido diagnosticado con diabetes o prediabetes? | 0: no                                                           |
+|          |                                    |                                                    |                                                                 |
+|          |                                    |                                                    | 1: si                                                           |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| wt       | Numérico                           | Peso                                               | kg                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| ht       | Numérico                           | Altura                                             | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| bmi      | Numérico                           | Indice de Masa Corporal                            | kg/m2                                                           |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| leg      | Numérico                           | Longitud de la parte superior de la pierna         | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| arml     | Numérico                           | Longitud de la parte superior del brazo            | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| armc     | Numérico                           | Circunferencia del brazo                           | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| waist    | Numérico                           | Circunferencia de la cintura                       | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| tri      | Numérico                           | Pliegue tricipital                                 | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| sub      | Numérico                           | Pliegue subescapular                               | cm                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| gh       | Numérico                           | Hemoglobina glicosilada                            | \%                                                              |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| albumin  | Numérico                           | Albúmina                                           | g/dL                                                            |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| bun      | Integer                            | Nitrógeno ureico en Sangre                         | mg/dL                                                           |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+| SCr      | Numérico                           | Creatinina sérica                                  | mg/dL                                                           |
++----------+------------------------------------+----------------------------------------------------+-----------------------------------------------------------------+
+
+Podemos observar que muchas de las variables tienen valores NA:
+
+```{r}
+# Número de valores perdidos por variable
+colSums(is.na(nhgh))
+
+```
+
+Se observa la presencia de valores ausentes en varias variables, especialmente en el pliegue subescapular (971), tricipital (481) y en los ingresos (320).
+
+Los valores ausentes (NA) se tratarán de forma diferente según el tipo de análisis llevado a cabo en las secciones posteriores.
+
+En el análisis exploratorio de la sección 3, trabajaremos con el conjunto de datos original, manteniendo los valores NA y los ignoraremos de forma explícita utilizando funciones como na.rm = TRUE, con el objetivo de conservar la mayor cantidad de información posible para los análisis descriptivos y gráficos.
+
+En la sección 4, como no usaremos todas las variables sino un subconjunto reducido, nos aseguraremos de que el subconjunto tenga un número limitado de valores NA y filtraremos casos completos o, si fuera necesario, recurriremos a la imputación de los valores NA reemplazándolos por la mediana o la media (según la distribución de cada variable).
+
+#### 2.2 Preguntas “objetivo”
+
+-   ¿Son la diabetes y la obesidad enfermedades prevalentes en la población estadounidense?
+
+-   ¿Qué variables muestran mayor asociación con el diagnóstico de diabetes o prediabetes?
+
+-   ¿Existen diferencias en los valores de HbA1c según el sexo, la edad y la etnia de los individuos?
+
+-   ¿Existen diferencias en los niveles de HbA1c y otros parámetros analíticos según el nivel de ingresos familiares?
+
+-   ¿Qué grupos sociodemográficos presentan mayor prevalencia de obesidad? ¿Cómo se relaciona esta con el diagnóstico de diabetes o prediabetes?
+
+### Sección 3. Análisis exploratorio de datos
+
+#### 3.1 Análisis descriptivo y gráfico
+
+En primer lugar, se hace un análisis estadístico:
+
+```{r}
+summary(nhgh) # Se muestra un resumen estadístico de las 20 variables
+prop.table(table(nhgh$tx)) # Se muestran las frecuencias relativas de la variable "tx".
+prop.table(table(nhgh$dx)) # Se muestran las frecuencias relativas de la variable "dx".
+```
+
+Como se mencionó previamente, dentro de las 20 variables estudiadas hay 3 variables categóricas y 17 variables numéricas. La función `summary()` permite obtener un resumen estadístico de las variables numéricas:
+
+-   *seqn*: es una variable numérica, pero se corresponde con un código identificador del sujeto encuestado. Por lo tanto, a pesar de que la función hace un estudio estadístico, los números resultantes carecen de significación.
+
+-   *age*: la edad media de los participantes es de 44 años (44.29), abarcando un rango de 12 - 80 años. Los cuartiles son: Q1 = 25.67 años, Q2 = 43.75 años y Q3 = 61.33 años.
+
+-   *tx*: es una variable numérica, pero se corresponde en realidad con una variable categórica en la cual "0" indica no tomar medicación para la diabetes y "1" indica tomarla. Del estudio estadístico, lo que se puede apreciar es que la gran mayoría de encuestados no toma medicación. Se hallan las frecuencias relativas y se obtiene que un 91% de los encuestados no toma este tipo de medicación frente a un 9% que sí la tiene prescrita.
+
+-   *dx*: al igual que la variable anterior, a pesar de ser numérica se corresponde en realidad con una categórica en la cual "0" indica no estar diagnosticado de diabetes y "1" sí. Del estudio estadístico, se aprecia que la gran mayoría de encuestados no está diagnosticado. Con las frecuencias relativas se obtiene que un 87% de los encuestados no está diagnosticado y un 13% sí.
+
+-   *wt*: el peso medio de los participantes es de 79.37 kg, abarcando un rango de 28.00 - 239.40 kg. Los cuartiles son: Q1 = 64.60 kg, Q2 = 76.30 kg y Q3 = 91.10 kg.
+
+-   *ht*: la altura media de los participantes es de 167.0 cm, abarcando un rango de 123.3 - 202.7 cm. Los cuartiles son: Q1 = 159.6 cm, Q2 = 166.6 cm y Q3 = 174.5 cm.
+
+-   *bmi*: el índice de masa corporal medio de los participantes es de 28.32 kg/m\^2, abarcando un rango de 13.18 - 84.87 kg/m\^2. Los cuartiles son: Q1 = 23.43 kg/m\^2, Q2 = 27.29 kg/m\^2 y Q3 = 31.88 kg/m\^2.
+
+-   *leg*: el tamaño de pierna medio de los participantes es de 38.41 cm, abarcando un rango de 20.40 - 50.60 cm. Los cuartiles son: Q1 = 36.00 cm, Q2 = 38.40 cm y Q3 = 41.00 cm.
+
+-   *arml*: el tamaño de brazo medio de los participantes es de 36.87 cm, abarcando un rango de 24.80 - 47.0 cm. Los cuartiles son: Q1 = 35.00 cm, Q2 = 36.80 cm y Q3 = 38.80 cm.
+
+-   *armc*: la circunferencia de brazo media de los participantes es de 32.49 cm, abarcando un rango de 16.80 - 61.00 cm. Los cuartiles son: Q1 = 28.85 cm, Q2 = 32.10 cm y Q3 = 35.60 cm.
+
+-   *waist*: la circunferencia de cintura media de los participantes es de 96.25 cm, abarcando un rango de 52.00 - 179.00 cm. Los cuartiles son: Q1 = 83.50 cm, Q2 = 95.30 cm y Q3 = 106.90 cm.
+
+-   *tri*: el pliegue del tríceps medio de los participantes es de 18.79 mm, abarcando un rango de 2.60 - 41.10 mm. Los cuartiles son: Q1 = 12.00 mm, Q2 = 17.90 mm y Q3 = 25.00 mm.
+
+-   *sub*: el pliegue subescapular medio de los participantes es de 19.96 mm, abarcando un rango de 3.8 - 40.40 mm. Los cuartiles son: Q1 = 13.0 mm, Q2 = 19.40 mm y Q3 = 26.20 mm.
+
+-   *gh*: el porcentaje medio de glicohemoglobina de los participantes es de 5.677 %, abarcando un rango de 4.000 - 16.400 %. Los cuartiles son Q1 = 5.200 %, Q2 = 5.500 % y Q3 = 5.800 %.
+
+-   *albumin*: la albúmina media de los participantes es de 4.274 g/dL, abarcando un rango de 2.500 - 5.300 g/dL. Los cuartiles son Q1 = 4.100 g/dL, Q2 = 4.300 g/dL y Q3 = 4.500 g/dL.
+
+-   *bun*: el nitrógeno ureico en sangre medio de los participantes es de 12.92 mg/dL, abarcando un rango de 1.00 - 90.00 mg/dL. Los cuartiles son Q1 = 9.00 mg/dL, Q2 = 12.00 mg/dL y Q3 = 15.00 mg/dL.
+
+-   *SCr*: la creatinina media de los participantes es de 0.8786 mg/dL, abarcando un rango de 0.1400 - 15.6600 mg/dL. Los cuartiles son Q1 = 0.7000 mg/dL, Q2 = 0.8300 mg/dL y Q3 = 0.9800 mg/dL.
+
+En todos los casos la distribución de datos está centrada, ya que la media y la mediana (Q2) toman valores próximos. No obstante, se sospecha cierta asimetría de algunas variables, debida a la existencia de valores extremos alejados de los límites del rango intercuartílico. Para comprobar esta distribución, se generan boxplots de cada variable:
+
+```{r}
+par(mfrow = c(2,5)) # Se crea una matriz de 2 filas y 5 columnas para mostrar los gráficos.
+boxplot(nhgh$age, main = "age", col = "darkseagreen2")
+boxplot(nhgh$wt, main = "wt", col = "blue")
+boxplot(nhgh$ht, main = "ht", col = "aquamarine")
+boxplot(nhgh$bmi, main = "bmi", col = "purple")
+boxplot(nhgh$leg, main = "leg", col = "brown1")
+boxplot(nhgh$arml, main = "arml", col = "pink")
+boxplot(nhgh$armc, main = "armc", col = "chartreuse")
+boxplot(nhgh$waist, main = "waist", col = "cornsilk")
+boxplot(nhgh$tri, main = "tri", col = "orange")
+boxplot(nhgh$sub, main = "sub", col = "grey")
+```
+
+```{r}
+par(mfrow = c(1,4)) # Se crea una matriz de 1 fila y 4 columnas para mostrar los boxplots faltantes, ya que en una sola imagen no se cargaban correctamente
+boxplot(nhgh$gh, main = "gh", col = "red")
+boxplot(nhgh$albumin, main = "albumin", col = "yellow")
+boxplot(nhgh$bun, main = "bun", col = "green")
+boxplot(nhgh$SCr, main = "SCr", col = "cyan")
+```
+
+En vista de los boxplots resultantes, las variables *age*, *ht*, *leg*, *arml*, *tri*, *sub* y *albumin* son las que se encuentran aproximadamente centradas (aunque salvo *age*, *tri* y *sub*, el resto contienen outliers tanto sobre los límites superiores como por debajo de los inferiores).
+
+Se confirma la asimetría de la muestra hacia valores elevados para las variables *wt*, *bmi*, *armc*, *waist*, *gh*, *bun* y *SCr*, pues como se puede observar existen numerosos valores que exceden los rangos intercuartílicos definidos en el límite superior.
+
+Se complementa en estudio de boxplot con una representación gráfica de histogramas:
+
+```{r}
+par(mfrow = c(2,5))
+hist(nhgh$age, breaks = 20, main = "age", xlab = "Years", col = "darkseagreen2")
+hist(nhgh$wt, breaks = 20, main = "wt", xlab = "kg", col = "blue")
+hist(nhgh$ht, breaks = 20, main = "ht", xlab = "cm", col = "aquamarine")
+hist(nhgh$bmi, breaks = 20, main = "bmi", col = "purple")
+hist(nhgh$leg, breaks = 20, main = "leg", xlab = "cm", col = "brown1")
+hist(nhgh$arml, breaks = 20, main = "arml", , xlab = "cm", col = "pink")
+hist(nhgh$armc, breaks = 20, main = "armc", xlab = "cm", col = "chartreuse")
+hist(nhgh$waist, breaks = 20, main = "waist", xlab = "cm", col = "cornsilk")
+hist(nhgh$tri, breaks = 20, main = "tri", xlab = "mm", col = "orange")
+hist(nhgh$sub, breaks = 20, main = "sub", xlab = "mm", col = "grey")
+```
+
+```{r}
+par(mfrow = c(1,4))
+hist(nhgh$gh, breaks = 20, main = "gh", xlab = "%", col = "red")
+hist(nhgh$albumin, breaks = 20, main = "albumin", xlab = "g/dL", col = "yellow")
+hist(nhgh$bun, breaks = 20, main = "bun", xlab = "mg/dL", col = "green")
+hist(nhgh$SCr, breaks = 20, main = "SCr", xlab = "mg/dL", col = "cyan")
+```
+
+Se confirma la distribución comentada en los boxplots, viendo como en las variables asimétricas la mayor parte de los datos se concentra en valores bajos y existe una cola que se extiende hacia los valores altos, es decir, una asimetría hacia la derecha.
+
+A continuación, se analizan las variables categóricas:
+
+```{r}
+library(Hmisc)
+describe(nhgh$sex) # Se obtiene una tabla resumen de la variable categórica "sex".
+describe(nhgh$re) # Se obtiene una tabla resumen de la variable categórica "re".
+describe(nhgh$income) # Se obtiene una tabla resumen de la variable categórica "income".
+```
+
+Se observa que la participación en el estudio en cuanto al género es de 50.4% mujeres y 49.6% hombres.
+
+En cuanto a la raza, la participación en el estudio es de 20.1% mexicanos, 17.9% negros no-hispánicos, 45.9% blancos no-hispánicos, 10.4% otros hispánicos y 5.7% otras razas incluyendo multi-racial.
+
+En cuanto a los rangos de ingresos, se observa que la participación es diversa, destacando con una mayor frecuencia los grupos de [25000, 35000) con un 13.1% y \>=100000 con un 13.5%; y con una menor frecuencia \< 20000 con un 1.2% y [0, 5000) con un 3.6%.
+
+Se representan gráficamente estas variables categóricas:
+
+```{r}
+par(mfrow = c(1, 3))
+barplot(table(nhgh$sex), main = "sex", ylab = "Frecuencia", col = c("blue", "green"))
+barplot(table(nhgh$re), main = "re", ylab = "Frecuencia", col = c("orange", "black", "white", "brown", "purple"), las = 2, cex.names = 0.6) # Se utiliza "las = 2" para que las etiquetas del eje X estén en horizontal (Fuente: https://r-graph-gallery.com/210-custom-barplot-layout.html) y se reduce el tamaño de letra para que se muestre la etiqueta completa
+barplot(table(nhgh$income), main = "income", ylab = "Frecuencia", col = rainbow(13), las = 2, cex.names = 0.7)
+```
+
+En estos histogramas, se observa como hay la misma proporción de mujeres que de hombres en el estudio, la raza principal testada es la *"Non-hispanic White"* y existe una distribución variada en cuanto a las clases del nivel de ingresos económicos.
+
+A continuación, se representan los mismos datos con un gráfico alternativo (*piechart*):
+
+```{r}
+par(mfrow = c(1, 3))
+pie(table(nhgh$sex), main = "sex", col = c("blue", "green"))
+pie(table(nhgh$re), main = "re", col = c("orange", "black", "white", "brown", "purple"), cex = 0.6)
+pie(table(nhgh$income), main = "income", col = rainbow(13), cex = 0.7)
+```
+
+Se puede concluír que, entre los encuestados, se encuentran diagnosticados de diabetes una minoría (13%), así como aún menos participantes toman una medicación frente a la misma (9%). Además, en términos generales se podría decir que la muestra es heterogénea. No obstante, cabe destacar que es homogénea en cuanto al diagnóstico y tratamiento de la diabetes (la mayor parte de sujetos no están diagnosticados ni tratados) y analiza a una mayoría de población no-hispánica blanca. Al ser un estudio poblacional, estas diferencias deberían venir marcadas por la composición de la población estadounidense.
+
+#### 3.2 Inferencia y simulación
+
+##### a) Definición de función que realice algún tipo de cálculo de interés en el contexto del conjunto de datos.
+
+Como se indicó previamente, el objetivo principal de este análisis es el de relacionar un biomarcador de diabetes (la hemoglobina glicosilada) u otros marcadores que podramos detectar (por ejemplo, factores antropométricos) con factores sociodemográficos.
+
+Por ello, se elabora una función que relacione el nivel promedio de biomolécula o factor antropométrico (es decir, alguna de nuestras variables numéricas) con el grupo que se esté analizando (es decir, una variable categórica):
+
+```{r}
+nivel_factor = function(datos=nhgh, variable_numerica, variable_categorica, letra=1) {
+  medias_nivel = tapply(nhgh[[variable_numerica]], nhgh[[variable_categorica]], mean, na.rm = TRUE)
+  print(medias_nivel)
+  num_na = sum(is.na(nhgh[[variable_numerica]]))
+  if (num_na > 0) { # Si se omite algún valor NA para hacer la media, aparece un mensaje que indica cuántos.
+    cat("Se han omitido", num_na, "valores NA de", variable_numerica, "de un total de", nrow(nhgh), "observaciones. \n")
+  }
+  barplot(medias_nivel, main = paste("Nivel de", variable_numerica, "por", variable_categorica), ylab = paste("Media de", variable_numerica), col = c("yellow", "orange", "cyan", "pink", "green"), las = 2, cex.names = letra)
+}
+```
+
+La función toma 4 variables: el conjunto de datos que se utiliza (en este caso se indica que por defecto es nhgh), la variable numérica y categórica que se quieren relacionar y por último un tamaño de letra que por defecto es 1 (necesario porque como se vió en los gráficos anteriores, si el nombre del nivel de la variable categórica es largo se va a ver cortado al graficar).
+
+En primer lugar, creamos una variable que almacene las medias de la variable numérica para cada nivel de la variable categórica. Para ello utilizamos la función `tapply()` de R, la cual permite calcular resúmenes estadísticos por grupos en base a los niveles de un factor (Fuente: [R Coder](https://r-coder.com/tapply-en-r/)). Primero se especifica el objeto del cual se van a hacer los cálculos, que en este caso es la variable numérica que pertenece al conjunto de datos, lo cual se codifica como `nhgh[[variable]]`. Después se especifica la lista de factores, la función que se aplicará (en este caso la media) y por último un argumento que elimina los valores nulos (`na.rm`), porque para poder hacer la media sin que R devuelva "NA" tienen que retirarse del conteo. Por este motivo, se incluye además un contador que indica cuántos valores se omitieron con respecto al total de datos para que el usuario tome las conclusiones pertinentes.
+
+En segundo lugar, definimos una tabla con los valores así como un barplot para mostrar los resultados de forma clara.
+
+Pongamos por ejemplo que queremos conocer el nivel de albúmina en función del género:
+
+```{r}
+nivel_factor(nhgh, "albumin", "sex")
+```
+
+O el tamaño de la cintura según la raza:
+
+```{r}
+nivel_factor(nhgh, "waist", "re", 0.6)
+```
+
+Entonces, referenciando uno de los objetivos propuestos, estudiamos si podrían existir diferencias en los valores de HbAc1 según factores demográficos (sexo, etnia o edad):
+
+```{r}
+par(mfrow = c(1, 3))
+nivel_factor(nhgh, "gh", "sex")
+nivel_factor(nhgh, "gh", "re", 0.6)
+
+# Para la edad, es necesario establecer subgrupos, así que se modifica la función existente para obtener una nueva función adaptada a esta necesidad:
+nivel_edad = function(datos=nhgh, variable_numerica, vector_edad=c(0, 20, 40, 60, 100), letra=1) {
+  # Se crean los subgrupos de edad según el vector introducido, aunque se incluye uno por defecto
+  tramos_edad = cut(datos$age, breaks = vector_edad)
+  medias_nivel = tapply(nhgh[[variable_numerica]], tramos_edad, mean, na.rm = TRUE)
+  print(medias_nivel)
+  num_na = sum(is.na(nhgh[[variable_numerica]]))
+  if (num_na > 0) {
+    cat("Se han omitido", num_na, "valores NA de", variable_numerica, "de un total de", nrow(nhgh), "observaciones. \n")
+  }
+  barplot(medias_nivel, main = paste("Nivel de", variable_numerica, "por tramo de edad"), ylab = paste("Media de", variable_numerica), col = c("yellow", "orange", "cyan", "pink", "green"), las = 2, cex.names = letra)
+}
+
+nivel_edad(nhgh, "gh")
+
+# Si se quisiera, podrían añadirse rangos de edad personalizados:
+v_edad = c(10, 20, 30, 40, 50, 60, 70, 80, 90)
+nivel_edad(nhgh, "gh", v_edad)
+```
+
+*A priori*, no parece que existan diferencias de HbAc1 en cuanto a los parámetros de género o etnia, pero si parece existir una relación positiva del nivel de glicohemoglobina con la edad. Dividiendo más los tramos, se observa que se produce un crecimiento hasta el tramo de 70-80 años, a partir del cual se reduce.
+
+Para hallar lo mismo entre los valores de HbAc1 u otros parámetros analíticos (albúmina, BUN y Scr) y el nivel de ingresos familiares:
+
+```{r}
+par(mfrow = c(2, 2))
+nivel_factor(nhgh, "gh", "income")
+nivel_factor(nhgh, "albumin", "income")
+nivel_factor(nhgh, "bun", "income")
+nivel_factor(nhgh, "SCr", "income")
+```
+
+En este caso, *a priori*, tampoco parece que haya diferencias acusadas derivadas del nivel de ingresos familiares.
+
+Referenciando otro objetivo, se buscan los grupos sociodemográficos con mayor prevalencia de obesidad. Definiendo obesidad como un BMI por encima de 30 ([Fuente: NIH](https://www.nhlbi.nih.gov/calculate-your-bmi)) se modifica tanto la función *nivel_factor* como *nivel_edad* para incluir una línea que marque el límite de la obesidad:
+
+```{r}
+# Modificación de la función nivel_factor para marcar obesidad:
+nivel_factor_obesidad = function(datos=nhgh, variable_categorica, letra=1) {
+  variable_numerica = "bmi"
+  medias_nivel = tapply(nhgh[[variable_numerica]], nhgh[[variable_categorica]], mean, na.rm = TRUE)
+  print(medias_nivel)
+  num_na = sum(is.na(nhgh[[variable_numerica]]))
+  if (num_na > 0) {
+    cat("Se han omitido", num_na, "valores NA de", variable_numerica, "de un total de", nrow(nhgh), "observaciones. \n")
+  }
+  barplot(medias_nivel, main = paste("Nivel de", variable_numerica, "por", variable_categorica), ylab = paste("Media de", variable_numerica), ylim = c(0, max(medias_nivel, 30)), col = c("yellow", "orange", "cyan", "pink", "green"), las = 2, cex.names = letra)
+  abline(h = 30, lty = 2, col = "black", lwd = 3) # Aquí se añade la línea. Además, se modifica el barplot añadiendo un límite de y que sea o bien el máximo que alcance la media o bien el punto donde se marca la línea de la obesidad, y = 30.
+  abline(h = 25, lty = 2, col = "blue", lwd = 2) # Se añade otra línea que marca el límite del sobrepeso, bmi = 25.
+}
+
+# Modificación de la función nivel_edad para marcar obesidad:
+nivel_edad_obesidad = function(datos=nhgh, vector_edad=c(0, 20, 40, 60, 100), letra=1) {
+  # Se crean los subgrupos de edad según el vector introducido:
+  tramos_edad = cut(datos$age, breaks = vector_edad)
+  variable_numerica = "bmi"
+  medias_nivel = tapply(nhgh[[variable_numerica]], tramos_edad, mean, na.rm = TRUE)
+  print(medias_nivel)
+  num_na = sum(is.na(nhgh[[variable_numerica]]))
+  if (num_na > 0) {
+    cat("Se han omitido", num_na, "valores NA de", variable_numerica, "de un total de", nrow(nhgh), "observaciones. \n")
+  }
+  barplot(medias_nivel, main = paste("Nivel de", variable_numerica, "por tramo de edad"), ylab = paste("Media de", variable_numerica), ylim = c(0, max(medias_nivel, 30)), col = c("yellow", "orange", "cyan", "pink", "green"), las = 2, cex.names = letra)
+  abline(h = 30, lty = 2, col = "black", lwd = 3)
+  abline(h = 25, lty = 2, col = "blue", lwd = 2)
+}
+
+par(mfrow = c(2, 2))
+nivel_factor_obesidad(nhgh, "sex")
+nivel_factor_obesidad(nhgh, "income")
+nivel_factor_obesidad(nhgh, "re", 0.6)
+v_edad = c(10, 20, 30, 40, 50, 60, 70, 80)
+nivel_edad_obesidad(nhgh, v_edad)
+```
+
+Aunque se observa que en todos los casos la población se encuentra en promedio por debajo de la obesidad (BMI = 30), sí se encuentra en el rango de sobrepeso (BMI = 25). De hecho, calculando la prevalencia de estos trastornos se obtiene que un 31% de los participantes tiene sobrepeso y un 34% obesidad, lo cual convierte esta enfermedad en una condición más frecuente que la de tener un peso ideal.
+
+```{r}
+# Ratio de sobrepreso en la muestra:
+mean(nhgh$bmi >= 25 & nhgh$bmi < 30, na.rm = TRUE)
+# Ratio de obesidad en la muestra:
+(mean(nhgh$bmi >= 30, na.rm = TRUE))
+```
+
+Retomando los gráficos de barras, no se aprecian diferencias en cuanto al género.
+
+En cuanto a la raza, parece que la raza negra no hispánica tiende a acumular más peso, rozando la obesidad, mientras que el grupo de otras razas se encuentra en un peso más cercano al ideal (aunque esto último podría ser un artefacto debido al menor tamaño poblacional).
+
+En cuanto a los ingresos, no se observan grandes diferencias a excepción de los grupos más extremos (el de menores ingresos y el de mayores ingresos), los cuales tienen un peso más cercano al ideal.
+
+En cuanto al tramo de edad, no se observan grandes diferencias a excepción de los tramos de edad más jóvenes (de 10-20 años y 20-30 años), en el cual el primero se encuentra en su peso ideal y el segundo sobrepasando ligeramente el límite del sobrepeso.
+
+Para saber si la obesidad se relaciona con el diagnóstico de diabetes o prediabetes:
+
+```{r}
+nivel_factor(nhgh, "bmi", "dx")
+```
+
+Se observa que el diagnóstico de diabetes o prediabetes es mayor en aquellos grupos que tienen un BMI elevado, por encima de 30 (lo cual se considera obesidad), por lo que podríamos sospechar que la obesidad es un factor de riesgo para el padecimiento y por tanto diagnóstico de diabetes.
+
+##### b) Enunciados que respondan a una cuestión de probabilidad
+
+1.  **¿Cuál es la probabilidad de que si seleccionamos 20 personas, al menos una tenga diabetes o prediabetes?**
+
+En la práctica clínica habitual, se considera un valor de HbAc1 \>= 6.5% como umbral para el diagnóstico de diabetes (Fuente: [NIH](https://pmc.ncbi.nlm.nih.gov/articles/PMC2999978/)) y entre 5.7 - 6.4 % para la prediabetes, por lo que se tomarán estos valores como referencia.
+
+```{r}
+# Distribución binomial X ~ Bin(n,p) -> P(X >= 1)
+
+n = 20 # Se seleccionan 20 personas
+p = mean(nhgh$gh >= 5.7) # Se calcula la probabilidad de tener prediabetes como la media de los valores que superen el 5.7%. Esta incluye también a los pacientes que tengan diabetes (valores más altos)
+
+# P(X >= 1) = 1 - P(X <= 0) = 1 - P(X = 0)
+p_binom_prediabetes = 1 - pbinom(0, n, p)
+p_binom_prediabetes
+```
+
+La probabilidad de que en una muestra estadounidense de 20 personas haya al menos una persona prediabética/diabética es del 99.98%. Esto revela que se trata de una enfermedad con una alta prevalencia.
+
+2.  **Suponiendo que la distribución del BMI es normal, ¿cuál es la probabilidad de que una persona tenga un BMI superior a 25 (es decir, se considere que está por encima del peso recomendado)?**
+
+```{r}
+# Se realizan las siguientes comprobaciones para poder "suponer que la distribución del BMI es normal":
+# 1. Comparación de la curva de densidad de los datos con la teórica de la normal
+
+plot(density(nhgh$bmi), main='Curva de densidad normal de "bmi"')
+curve(dnorm(x, mean(nhgh$bmi), sd(nhgh$bmi)), add = TRUE, col = "red", lwd = 2)
+```
+
+```{r}
+#2. Análisis Q-Q plot
+qqnorm(nhgh$bmi)
+qqline(nhgh$bmi, col = "red")
+```
+
+Se aprecia normalidad en el centro, aunque en las colas se pierde esta distribución. Para el ejercicio, se considerará que se puede asumir normalidad.
+
+```{r}
+# Distribución normal X ~ N(m,sd) -> P(X > 25)
+
+m = mean(nhgh$bmi)
+sd = sd(nhgh$bmi)
+
+p_norm_sobrepeso = pnorm(25, m, sd, lower.tail = FALSE)
+p_norm_sobrepeso
+```
+
+La probabilidad de que una persona tenga un BMI por encima de 25 es del 68.37%. Esto revela una alta prevalencia de sobrepeso en la población estadounidense (si se confirmara que la muestra escogida es comparable con la población general).
+
+3.  **¿Cuál es la probabilidad de que si seleccionamos 50 personas con un peso por encima del recomendado, al menos 25 no tengan diabetes o prediabetes? ¿Y seleccionando 50 personas con un peso ideal?**
+
+```{r}
+# Distribución binomial X ~ Bin (n, p) -> P (X >= 25) = 1 - P (X <= 24)
+n = 50
+# p = P (no prediabetes | sobrepeso) -> prediabetes medido a través de "gh" y sobrepeso medido a través de "bmi"
+participantes_sobrepeso = nhgh[nhgh$bmi >= 25, ]
+p_tener_diab = mean(participantes_sobrepeso$gh >= 5.7, )
+p1 = 1 - p_tener_diab # La probabilidad de no tener diabetes en este grupo es la inversa de sí tenerla
+p_binom_prediabetes_sobrepeso = 1 - pbinom(24, n, p1)
+p_binom_prediabetes_sobrepeso
+```
+
+La probabilidad de que en una muestra estadounidense de 50 personas con sobrepeso al menos 25 personas no tengan diabetes o prediabetes es del 83.68 %.
+
+```{r}
+# Se ejecuta lo mismo para una población con un peso ideal
+n = 50
+participantes_peso_normal = nhgh[nhgh$bmi >= 18.5 & nhgh$bmi < 25, ] # El peso ideal se define como un BMI por encima de 18.5 y por debajo de 25
+p_tener_diab = mean(participantes_peso_normal$gh >= 5.7, )
+p2 = 1 - p_tener_diab
+p_binom_prediabetes_no_sobrepeso = 1 - pbinom(24, n, p2)
+p_binom_prediabetes_no_sobrepeso
+```
+
+La probabilidad de que en una muestra estadounidense de 50 personas sin sobrepeso al menos 25 personas no tengan diabetes o prediabetes es del 99.99 %. Comparando esta información con la anterior lleva a sospechar que el sobrepeso sea un factor de riesgo en el desarrollo de diabetes o prediabetes.
+
+##### c) Incluid un enunciado que corresponda a un breve modelo de simulación
+
+Retomando la idea del apartado anterior, a continuación se plantea una simulación que de respuesta a lo que ya se ha calculado a través de un modelo teórico. El enunciado sería:
+
+***¿Cuál es la probabilidad de que si seleccionamos 50 personas con un peso por encima del recomendado, al menos 25 no tengan diabetes o prediabetes? ¿Y seleccionando 50 personas con un peso ideal? Resolvedlo con simulaciones y comparad el resultado obtenido con el cálculo teórico.***
+
+```{r}
+library(knitr)
+set.seed(721) # Se establece una semilla para que los datos se mantengan cada vez que se ejecute el código
+num_simulaciones = 10000 # Propongo 10.000 simulaciones
+
+# Probabilidad de no tener prediabetes con sobrepeso
+simulacion_no_prediabetes_sobrepeso = rbinom(num_simulaciones, n, p1)
+head(simulacion_no_prediabetes_sobrepeso) # Compruebo que se han generado correctamente. Se devuelve el número de personas sin sobrepeso en cada simulación
+p_sim_no_prediabetes_sobrepeso = mean(simulacion_no_prediabetes_sobrepeso >= 25) # Se recoge la probabilidad de que el número de la simulación sea mayor o igual a 25, es decir, de al menos 25 personas
+
+# Probabilidad de no tener prediabetes sin sobrepeso
+simulacion_no_prediabetes_no_sobrepeso = rbinom(num_simulaciones, n, p2)
+head(simulacion_no_prediabetes_no_sobrepeso)
+p_sim_no_prediabetes_no_sobrepeso = mean(simulacion_no_prediabetes_no_sobrepeso >= 25)
+
+# Resultado teórico vs empírico
+resultado = data.frame(Poblacion = c("Con sobrepeso", "Peso ideal"),
+                       Teórica = c(round(p_binom_prediabetes_sobrepeso, 4), round(p_binom_prediabetes_no_sobrepeso, 4)),
+                       Simulación = c(round(p_sim_no_prediabetes_sobrepeso, 4), round(p_sim_no_prediabetes_no_sobrepeso, 4)))
+kable(resultado)
+```
+
+Como se puede observar, los resultados de la simulación son muy semejantes a los obtenidos de forma teórica.
+
+### Sección 4. Modelos de aprendizaje automático
+
+Uno de los objetivos propuestos es "estudiar las variables antropométricas y sociodemográficas que muestren mayor asociación con el diagnóstico de diabetes o prediabetes", al que se intentará dar respuesta a través de un modelo de aprendizaje automático supervisado.
+
+Optamos por este tipo de aprendizaje porque entrenaremos un conjunto de datos etiquetado (es decir, "diagnosticado" o "no diagnosticado", información contenida en la variable *dx*) y tenemos el objetivo de estudiar las condiciones que puedan estar afectando a este diagnóstico, para intentar relacionar ciertas variables de entrada con la variable resultado.
+
+Para esto, el modelo de regresión que se plantea es de regresión logística, ya que se pretende obtener como resultado la probabilidad de una variable dependiente categórica (es decir, la probabilidad de estar o no diagnosticado de diabetes) utilizando los mejores predictores encontrados.
+
+En primer lugar, se estudia gráficamente la posible relación entre una variable y el diagnóstico. Dado que se trata de una variable binaria, se opta por un boxplot:
+
+```{r}
+par(mfrow = c(2,4))
+boxplot(age~dx, main = "age", col = "darkseagreen2", data = nhgh)
+boxplot(wt~dx, main = "wt", col = "blue", data = nhgh)
+boxplot(ht~dx, main = "ht", col = "aquamarine", data = nhgh)
+boxplot(bmi~dx, main = "bmi", col = "purple", data = nhgh)
+boxplot(leg~dx, main = "leg", col = "brown1", data = nhgh)
+boxplot(arml~dx, main = "arml", col = "pink", data = nhgh)
+boxplot(armc~dx, main = "armc", col = "chartreuse", data = nhgh)
+boxplot(waist~dx, main = "waist", col = "cornsilk", data = nhgh)
+boxplot(tri~dx, main = "tri", col = "orange", data = nhgh)
+boxplot(sub~dx, main = "sub", col = "grey", data = nhgh)
+boxplot(gh~dx, main = "gh", col = "red", data = nhgh)
+boxplot(albumin~dx, main = "albumin", col = "yellow", data = nhgh)
+boxplot(bun~dx, main = "bun", col = "green", data = nhgh)
+boxplot(SCr~dx, main = "SCr", col = "cyan", data = nhgh)
+```
+
+A priori, se observan diferencias entre los grupos diagnosticados y sin diagnosticar en cuanto a las variables *age*, *waist* y *gh*, aunque también podría haberlas en menor medida en el caso de *bmi*.
+
+Se ajusta el modelo de regresión logístico:
+
+```{r}
+modelo_reg_log = glm (dx ~ age + wt + ht + bmi + leg + arml + armc + waist + tri + sub + gh + albumin + bun + SCr, data = nhgh, family = binomial(link = "logit"))
+summary(modelo_reg_log)
+```
+
+En un modelo logístico se obtienen coeficientes log-odd, que indican mayor probabilidad de diagnóstico si son positivos y menor probabilidad si son negativos. En la tabla de coeficientes se encuentran marcadas diferentes variables por tener un bajo p-valor. De todas ellas, *gh* es con diferencia la que muestra un mayor efecto (1.342320), lo cual es razonable ya que se trata de uno de los principales biomarcadores utilizados para el diagnóstico. Teniendo en cuenta que estas dos variables podrían estar relacionadas, si se tuviera en cuenta la *gh* podrían introducirse sesgos en el modelo. Por este motivo, ajustamos un segundo modelo que no la incluya:
+
+```{r}
+modelo_reg_log2 = glm (dx ~ age + wt + ht + bmi + leg + arml + armc + waist + tri + sub + albumin + bun + SCr, data = nhgh, family = binomial(link = "logit"))
+summary(modelo_reg_log2)
+```
+
+Ahora el modelo revela nuevos posibles predictores. Se toma como referencia un umbral de significación del 0.05. Entre los predictores, *age*, *armc*, *waist*, *sub* y *bun* tienen un efecto positivo, es decir, a mayor valor de estas variables mayor probabilidad de diagnóstico de diabetes. En cuanto a *bmi*, *leg* y *tri*, tienen un efecto negativo, a mayor valor de estas variables menor probabilidad de diagnóstico de diabetes.
+
+Analizando las métricas del modelo se observa una reducción entre "Null deviance" y "Residual deviance", lo cual indica que gracias al modelo con los predictores se puede predecir mejor la variable de respuesta que sólo con el intercepto. Además, se indica que se eliminaron 1199 observaciones, lo cual supone un 17.6% de los datos.
+
+Ahora se realizan predicciones en base al modelo ajustado para poder determinar la matriz de confusión, obteniendo gracias a esta el desempeño del modelo en términos de sensibilidad y especificidad:
+
+```{r}
+predicciones = predict(modelo_reg_log2, type = "response") # Se añade 'type = "response"' para que las predicciones sean probabilidades de que el participante esté diagnosticado con diabetes o prediabetes
+predicciones_clase = factor(ifelse(predicciones >= 0.5, 1, 0), levels = c(0,1)) # Clasifico las probabilidades obtenidas en un factor de dos clases. Utilizo el critero de que por encima de un 50% se considera que está diagnosticado de diabetes.
+datos_modelo_reales = model.frame(modelo_reg_log2) # Se extraen los datos que se utilizaron en el modelo de regresión para poder indicar sus valores reales en la matriz de confusión, ya que de lo contrario se genera un error derivado de las observaciones que se eliminaron durante la elaboración del modelo (Fuente: https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/model.frame).
+matriz_confusion = table(Prediccion = predicciones_clase, Real = datos_modelo_reales$dx)
+matriz_confusion
+
+v_positivos = matriz_confusion[2,2]
+f_positivos = matriz_confusion[2,1]
+v_negativos = matriz_confusion[1,1]
+f_negativos = matriz_confusion[1,2]
+
+sensibilidad = v_positivos / (v_positivos + f_negativos)
+especificidad = v_negativos / (v_negativos + f_positivos)
+
+cat("La sensibilidad es", sensibilidad, "y la especificidad", especificidad, ". \n")
+```
+
+El modelo propuesto predice correctamente 4935 pacientes sin diagnóstico y 42 con diagnóstico, errando en 619 casos: 583 falsos negativos y 36 falsos positivos. Esto resulta en una muy baja sensibilidad, el modelo diseñado puede identificar un 6,72 % de pacientes diagnosticados de diabetes; mientras que la especificidad es alta, el modelo diseñado puede identificar un 99,23% de pacientes no diagnosticados de diabetes.
+
+Ante esto, se reduce el umbral arbitrario del 50% para aumentar la sensibilidad y disminuir la especificidad, ya que en un contexto clínico son más peligrosos los falsos negativos (comprometen la calidad de vida del paciente, pues no se llevarán a cabo posteriores análisis) que los falsos positivos (a lo largo de posteriores análisis podría detectarse el error, aunque mientras tanto el paciente está sometido a un estrés innecesario):
+
+```{r}
+predicciones_clase2 = factor(ifelse(predicciones >= 0.2, 1, 0), levels = c(0,1))
+matriz_confusion2 = table(Prediccion = predicciones_clase2, Real = datos_modelo_reales$dx)
+matriz_confusion2
+v_positivos2 = matriz_confusion2[2,2]
+f_positivos2 = matriz_confusion2[2,1]
+v_negativos2 = matriz_confusion2[1,1]
+f_negativos2 = matriz_confusion2[1,2]
+sensibilidad2 = v_positivos2 / (v_positivos2 + f_negativos2)
+especificidad2 = v_negativos2 / (v_negativos2 + f_positivos2)
+cat("La sensibilidad es", sensibilidad2, "y la especificidad", especificidad2, ". \n")
+```
+
+Reduciendo el umbral a un 20%, se obtiene una significativa mejora de la sensibilidad (ahora de un 56,64%) y un leve detrimento de la especificidad (ahora un 85,11%); por lo que de cara a la clínica quizás sería más interesante utilizar esta opción.
+
+De todos modos, aún es grande el número de falsos positivos y de falsos negativos. Aunque los predictores utilizados podrían servir de ayuda en el diagnóstico, es necesario complementarlos con el uso de la hemoglobina glicosilada como principal biomarcador de esta enfermedad. A continuación, se incluye un modelo de regresión alternativo en el que se combinan las variables que resultaron ser buenos predictores con *gh*:
+
+```{r}
+# Predictores obtenidos junto con gh (fue el primero propuesto, "modelo_reg_log")
+predicciones3 = predict(modelo_reg_log, type = "response")
+predicciones_clase3 = factor(ifelse(predicciones3 >= 0.2, 1, 0), levels = c(0,1))
+datos_modelo_reales3 = model.frame(modelo_reg_log)
+matriz_confusion3 = table(Prediccion = predicciones_clase3, Real = datos_modelo_reales3$dx)
+matriz_confusion3
+v_positivos3 = matriz_confusion3[2,2]
+f_positivos3 = matriz_confusion3[2,1]
+v_negativos3 = matriz_confusion3[1,1]
+f_negativos3 = matriz_confusion3[1,2]
+sensibilidad3 = v_positivos3 / (v_positivos3 + f_negativos3)
+especificidad3 = v_negativos3 / (v_negativos3 + f_positivos3)
+cat("La sensibilidad es", sensibilidad3, "y la especificidad", especificidad3, "para el modelo con gh y otros predictores. \n")
+
+# Modelo sólo con gh
+modelo_reg_log4 = glm (dx ~ gh, data = nhgh, family = binomial(link = "logit"))
+predicciones4 = predict(modelo_reg_log4, type = "response")
+predicciones_clase4 = factor(ifelse(predicciones4 >= 0.2, 1, 0), levels = c(0,1))
+datos_modelo_reales4 = model.frame(modelo_reg_log4)
+matriz_confusion4 = table(Prediccion = predicciones_clase4, Real = datos_modelo_reales4$dx)
+matriz_confusion4
+v_positivos4 = matriz_confusion4[2,2]
+f_positivos4 = matriz_confusion4[2,1]
+v_negativos4 = matriz_confusion4[1,1]
+f_negativos4 = matriz_confusion4[1,2]
+sensibilidad4 = v_positivos4 / (v_positivos4 + f_negativos4)
+especificidad4 = v_negativos4/ (v_negativos4 + f_positivos4)
+cat("La sensibilidad es", sensibilidad4, "y la especificidad", especificidad4, "para el modelo sólo con gh. \n")
+```
+
+Se observa que utilizando los predictores propuestos en conjunto con la hemoglobina glicosilada se mejora la sensibilidad del modelo, es decir, se pueden detectar más diagnósticos de diabetes que usando únicamente la HbA1c.
+
+### Sección 5. Visualización
+
+Desarrollamos una aplicación interactiva en Shiny tomando como eje central la HbA1c, ya que es el marcador clave analizado en este estudio, para poder permitir la visualización de los datos modificando y seleccionando diversas variables antropométricas y sociodemográficas.
+
+La app cuenta con un panel lateral que permite cargar el archivo de datos (en formato .tsv o .csv) y personalizar distintos parámetros de análisis. En particular, posibilita la selección o exclusión de subgrupos poblacionales mediante filtros por edad, sexo, raza/etnia, nivel de ingresos familiares y presencia o ausencia de diagnóstico de diabetes o prediabetes, todas ellas variables categóricas.
+
+En cuanto a la visualización de resultados, la aplicación se organiza en varias pestañas. En primer lugar, se incluye una vista previa del conjunto de datos. A continuación, se presenta un gráfico de dispersión de HbA1c en función de la edad, diferenciando a los individuos con y sin diagnóstico de diabetes, lo que facilita la identificación de patrones descritos anteriormente en el análisis. Otra pestaña permite la comparación de los niveles de HbA1c entre distintos grupos mediante boxplots, considerando variables como sexo, etnia, nivel de ingresos y diagnóstico de diabetes. También se incorpora un gráfico de dispersión de HbA1c frente a variables antropométricas (IMC y circunferencia de cintura), para evaluar la relación de estas frente al marcador glucémico.
+
+Por último, la aplicación incluye una pestaña de resumen estadístico, donde se muestra el tamaño muestral total, media y mediana de HbA1c, media de IMC y media de circunferencia de cintura, siempre adaptados a los filtros seleccionados.
+
+```{r}
+# Cargamos los paquetes necesarios para la aplicación
+library(shiny)
+library(ggplot2)
+library(dplyr)
+
+options(shiny.maxRequestSize = 50 * 1024^2)
+
+# Definimos la interfaz del usuario
+ui <- fluidPage(
+  #Título de la app
+  titlePanel("Aplicación de visualización de datos para NHANES"),
+
+# Panel izquierdo
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Cargar archivo",#Archivo
+                accept = c(".tsv",".csv")),
+      checkboxInput("header", "Archivo con cabecera", TRUE), # Indica si el archivo tiene cabecera con nombres de columnas
+      selectInput("sep", "Separador",
+                  choices = c("Coma" = ",",
+                              "Punto y coma" = ";",
+                              "Tabulador" = "\t")), # Separadores
+      hr(), # Línea horizontal para separar secciones
+
+      uiOutput("filters"), # Filtros
+
+      hr(),
+      
+      # Opción para seleccionar variable antropométrica que será analizada junto a la HbA1c en el gráfico de dispersión de la cuarta pestaña
+      selectInput("x_var", "Variable antropométrica (en eje x)",
+                  choices = c("IMC"="bmi", "Circunferencia de cintura"="waist"),
+                  selected = "waist"),
+      # Opción para seleccionar el factor de agrupación para comparar los valores de HbA1c en la tercera pestaña
+      selectInput("group_var", "Agrupar HbA1c por",
+                  choices = c("Diagnóstico de diabetes o prediabetes"="dx", "Sexo"="sex", "Raza/Etnia"="re", "Ingresos familiares"="income"),
+                  selected = "dx"),
+      # Opción para remover valores NA en los gráficos
+      checkboxInput("remove_na", "Eliminar NA en gráficos", TRUE)
+    ),
+
+    # Panel principal
+    mainPanel(
+      # Cinco pestañas principales de visualización de resultados
+      tabsetPanel(
+        tabPanel("Vista previa",
+                 tableOutput("preview")),
+        tabPanel("HbA1c por edad",
+                 plotOutput("hba1c_age", height = 350)),
+        tabPanel("HbA1c por grupos",
+                 plotOutput("box_hba1c", height = 350)),
+        tabPanel("Relación HbA1c vs antropometría",
+                 plotOutput("scatter_plot", height = 350)),
+        tabPanel("Resumen",
+                 tableOutput("summary_tbl"))
+      )
+    )
+  )
+)
+
+# Definimos la lógica
+
+server <- function(input, output, session) {
+
+# Leemos el archivo y creamos un dataframe
+  data_raw <- reactive({
+   req(input$file)
+   df <- read.csv(input$file$datapath,
+                  header = input$header,
+                  sep = input$sep,
+                  stringsAsFactors = FALSE)
+
+   # Convertimos NA de income a categoría explícita, porque sino quedaban excluidos del N total en el resumen
+   if ("income" %in% names(df)) {
+     df$income <- ifelse(is.na(df$income), "Missing", as.character(df$income))
+   }
+
+   df
+   })
+
+
+# Damos una vista previa para verificar que el archivo se leyó bien
+  output$preview <- renderTable({
+    head(data_raw(), 10)
+  })
+
+  # Filtros dinámicos a partir de los checkboxes del panel lateral
+  output$filters <- renderUI({
+    df <- data_raw()
+
+    tagList(
+      sliderInput("age_rng", "Rango de edad",
+                  min = min(df$age, na.rm = TRUE),
+                  max = max(df$age, na.rm = TRUE),
+                  value = c(12, 80)),
+
+      checkboxGroupInput("sex_sel", "Sexo",
+                         choices = unique(df$sex),
+                         selected = unique(df$sex)),
+
+      checkboxGroupInput("re_sel", "Raza / Etnia",
+                         choices = unique(df$re),
+                         selected = unique(df$re)),
+
+      checkboxGroupInput("income_sel", "Nivel de ingresos",
+                         choices = sort(unique(df$income)),
+                         selected = sort(unique(df$income))),
+
+      checkboxGroupInput("dx_sel", "Diagnóstico (dx)",
+                         choices = unique(df$dx),
+                         selected = unique(df$dx))
+    )
+  })
+
+  # Dataset filtrado (según los criterios elegidos por el usuario)
+  data_filt <- reactive({
+    df <- data_raw()
+
+    df %>%
+      filter(age >= input$age_rng[1],
+             age <= input$age_rng[2],
+             sex %in% input$sex_sel,
+             re %in% input$re_sel,
+             income %in% input$income_sel,
+             dx %in% input$dx_sel) %>%
+    mutate(dx_label = factor(dx, levels = c(0, 1), labels = c("Sin dx", "Con dx")))
+  })
+
+  # Outputs: gráficos y estadísticas
+  
+  # Scatterplot de HbA1c en función de la edad (a partir del dataframe con datos filtrados)
+  output$hba1c_age <- renderPlot({
+   df <- data_filt()
+# En función de la selección de remover NA o no, quitamos o no los valores NA del gráfico:
+   if (input$remove_na)
+     df <- df[!is.na(df$gh) & !is.na(df$age) & !is.na(df$dx_label), ]
+   
+# Gráfico
+  ggplot(df, aes(x = age, y = gh, color = dx_label)) +
+     geom_point(alpha = 0.35) +
+     geom_smooth(method = "lm", se = TRUE) +
+     labs(
+       title = "HbA1c por edad (según diagnóstico o no de diabetes)",
+       x = "Edad (años)",
+       y = "HbA1c (%)",
+       color = "Dx"
+     )
+  })
+
+
+  # Boxplots en función del criterio seleccionado para agrupación:
+  output$box_hba1c <- renderPlot({
+    df <- data_filt()
+    g <- input$group_var
+
+    if (input$remove_na)
+      df <- df[!is.na(df$gh) & !is.na(df[[g]]), ]
+
+    ggplot(df, aes(x = as.factor(df[[g]]), y = gh)) +
+      geom_boxplot(fill = "lightblue") +
+      labs(title = paste("HbA1c por", g),
+           x = g,
+           y = "HbA1c (%)") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # Scatterplot HbA1c en función de valores antropométricos
+  output$scatter_plot <- renderPlot({
+    df <- data_filt()
+    x <- input$x_var
+
+    if (input$remove_na)
+      df <- df[!is.na(df$gh) & !is.na(df[[x]]), ]
+
+    ggplot(df, aes(x = df[[x]], y = gh)) +
+      geom_point(alpha = 0.6) +
+      geom_smooth(method = "lm", se = TRUE, color = "red") +
+      labs(title = paste("HbA1c vs", x),
+           x = x,
+           y = "HbA1c (%)")
+  })
+
+  # Resumen estadístico
+  output$summary_tbl <- renderTable({
+    df <- data_filt()
+
+    data.frame(
+      Métrica = c("N total",
+                  "Media HbA1c",
+                  "Mediana HbA1c",
+                  "Media IMC",
+                  "Media cintura"),
+      Valor = c(
+        nrow(df),
+        round(mean(df$gh, na.rm = TRUE), 3),
+        round(median(df$gh, na.rm = TRUE), 3),
+        round(mean(df$bmi, na.rm = TRUE), 2),
+        round(mean(df$waist, na.rm = TRUE), 2)
+      )
+    )
+  }, bordered = TRUE)
+}
+
+# Ejecutamos la aplicación
+
+shinyApp(ui, server)
+
+```
+
+Se adjuntan capturas de pantalla de la aplicación en funcionamiento:
+
+![](app_1.png) ![](app_2.png) ![](app_3.png) ![](app_4.png)
+
+### Sección 6. Conclusiones
+
+A partir del análisis realizado sobre los datos del estudio es posible extraer una serie de conclusiones generales.
+
+En relación con los valores de HbA1c, no se observaron diferencias relevantes según el sexo ni la etnia de los individuos. Sin embargo, la edad mostró una asociación positiva con los niveles de HbA1c, evidenciándose un incremento progresivo hasta el tramo de edad comprendido entre los 70 y 80 años. Este resultado sugiere que la edad es un factor clave en la variabilidad de este marcador, en concordancia con lo descrito en la literatura ([Gülsen et al., 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10710816/)).
+
+Respecto al nivel de ingresos familiares, no se identificaron diferencias significativas en los niveles de HbA1c ni en otros parámetros analíticos considerados. Esto indicaría que, al menos en este conjunto de datos, el nivel socioeconómico medido a través de los ingresos no se asocia de forma clara con el control glucémico.
+
+En cuanto a la prevalencia de obesidad, no se detectaron diferencias marcadas entre los distintos grupos sociodemográficos analizados. Es destacable que la mayoría de los grupos presentan valores medios compatibles con sobrepeso, a excepción del grupo de edad entre 10 y 20 años. Algunos subgrupos, como el de “otras razas” y los extremos del nivel de ingresos (es decir, el tramo de menores y mayores ingresos), muestran valores más cercanos al rango considerado ideal. Por otro lado, la población negra no hispánica tiende a presentar valores de peso más elevados, aproximándose a criterios indicadores de obesidad.
+
+El análisis de la relación entre obesidad y diagnóstico de diabetes o prediabetes revela una mayor prevalencia de diabetes en los grupos con obesidad, lo que refuerza la estrecha relación entre el exceso de peso y el riesgo metabólico.
+
+Finalmente, al evaluar qué variables se asocian en mayor medida con el diagnóstico de diabetes o prediabetes, mediante un modelo de aprendizaje automático supervisado y evaluando las variables numéricas (las categóricas fueron excluidas del análisis), se observó que la circunferencia de brazo y cintura, el pliegue subscapular, la edad y el nitrógeno ureico en sangre presentan una asociación positiva con dicho diagnóstico. En contraste, otras variables antropométricas como IMC, longitud de la parte superior de la pierna y pliegue tricipital mostraron una asociación negativa.
+
+Si bien el estudio permite identificar tendencias y asociaciones relevantes, no puede establecer relaciones causales. Sería necesario realizar análisis más avanzados, como modelos multivariantes ajustados por posibles factores de confusión, así como incorporar otras variables clínicas o de estilo de vida (por ejemplo, actividad física o dieta) para obtener una visión holística más próxima a la realidad de la población. Aun así, algunas de las conclusiones derivadas del estudio podrían ser útiles para orientar decisiones en salud pública, especialmente en lo relativo a la identificación de grupos con mayor riesgo de diabetes asociados al padecimiento de obesidad y a una edad avanzada.
+
+Por último, el trabajo en grupo ha permitido una adecuada distribución de tareas y discusión conjunta tanto de la elección del conjunto de datos como del análisis y los resultados obtenidos, facilitando alcanzar los objetivos planteados.
